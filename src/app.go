@@ -102,7 +102,7 @@ var netClient = &http.Client{
 
 func main() {
 	app := iris.Default()
-	app.Get("/onchange/{timeseriesID:string}", func(ctx iris.Context) {
+	app.Post("/onchange/{timeseriesID:string}", func(ctx iris.Context) {
 		timeseriesID := ctx.Params().Get("timeseriesID")
 		fmt.Println("timeseriesID:", timeseriesID)
 		var extensions Extensions
@@ -111,11 +111,20 @@ func main() {
 			ctx.JSON(iris.Map{"response": err.Error()})
 			return
 		}
+		/** PERFORMANCE: Issolation of extension work from import/export
+		* Need put the requests in a queue and process later. Otherwise need to increase the timeout at import & export
+		* Or use pubsub which is also like queue for async processing
+		**/
+		q := ctx.Request().URL.RawQuery
+		// requestID := ctx.URLParam("requestId")
+		// start := ctx.URLParamDefault("start", "")
 		// Trigger each matching Extension
 		for _, extension := range extensions {
 			extensionURL := fmt.Sprint("http://extension-", strings.ToLower(extension.Extension), ".default.svc.cluster.local")
 			jsonValue, _ := json.Marshal(extension)
-			resp, err := netClient.Post(fmt.Sprint(extensionURL, "/extension/", strings.ToLower(extension.Extension), "/trigger/", extension.ExtensionID), "application/json", bytes.NewBuffer(jsonValue))
+			resp, err := netClient.Post(
+				fmt.Sprint(extensionURL, "/extension/", strings.ToLower(extension.Extension), "/trigger/", extension.ExtensionID, "?", q),
+				"application/json", bytes.NewBuffer(jsonValue))
 			if err != nil {
 				fmt.Println("Error: Send to extension:", extensionURL, err)
 			}
